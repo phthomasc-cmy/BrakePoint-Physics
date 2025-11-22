@@ -116,7 +116,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            border-top: 1px solid ;
+            border-top: 1px solid #cbd5e1;
         }
 
         /* Right Panel: The Math (The "Tackle" part) */
@@ -181,7 +181,7 @@
         <div class="control-group">
             <label>Initial Velocity ($u$) <span id="val-u" class="value-display">20 m/s</span></label>
             <input type="range" id="input-u" min="5" max="40" step="1" value="20">
-            <small style="color: #666;">(20 m/s is approx 72 km/h)</small>
+            <small style="color: #666;">(approx 72 km/h)</small>
         </div>
 
         <div class="control-group">
@@ -365,36 +365,60 @@
         if(!state.running) return;
 
         const now = performance.now();
-        const dt = (now - lastTime) / 2000; // Delta time in seconds
-        lastTime = now;
+        // Calculate total time elapsed since start
+        state.time = (now - lastTime) / 1000; 
 
-        // 1. Update Physics
-        state.time += dt;
-
+        // --- FIX: CALCULATE EXACT PHYSICS BASED ON TIME ---
+        
+        // 1. Check if we are still in Reaction Phase
         if (state.time < state.tr) {
-            // Thinking Phase
             state.phase = 'thinking';
-            state.carX += state.carV * dt;
+            
+            // Exact Position: s = v * t
+            state.carX = state.u * state.time;
+            
+            // Velocity is constant
+            state.carV = state.u;
+        
         } else {
-            // Braking Phase
+            // 2. We are in Braking Phase
             if(state.phase === 'thinking') {
                 state.phase = 'braking';
                 document.getElementById('status-msg').innerText = "🛑 BRAKING PHASE!";
                 document.getElementById('status-msg').style.color = "var(--danger)";
             }
 
-            // Apply Acceleration (v = u + at)
-            state.carV += state.a * dt;
+            // Time spent braking
+            const brakeTime = state.time - state.tr;
 
-            if (state.carV <= 0) {
+            // Calculate current velocity: v = u + at
+            let currentV = state.u + (state.a * brakeTime);
+
+            if (currentV <= 0) {
+                // CAR HAS STOPPED
                 state.carV = 0;
                 state.running = false;
                 state.finished = true;
+                
+                // Snap position to the exact theoretical stopping distance to ensure perfect match
+                // Total = (Thinking Dist) + (Braking Dist)
+                const s1 = state.u * state.tr;
+                const s2 = -(state.u * state.u) / (2 * state.a);
+                state.carX = s1 + s2;
+                
                 endGame();
-            }
+            } else {
+                // CAR IS STILL MOVING
+                state.carV = currentV;
 
-            // Update position
-            state.carX += state.carV * dt;
+                // Exact Position: 
+                // Total Dist = (Thinking Dist) + (Distance covered during braking time)
+                // Braking Dist Formula: s = ut + 0.5at^2 (where t is brakeTime)
+                const thinkingDist = state.u * state.tr;
+                const brakingDist = (state.u * brakeTime) + (0.5 * state.a * (brakeTime * brakeTime));
+                
+                state.carX = thinkingDist + brakingDist;
+            }
         }
 
         // Check Crash
